@@ -75,11 +75,19 @@
         country: document.getElementById('scountry').value,
         password: document.getElementById('spass').value,
       };
+      console.log('📝 Signing up with:', payload.email);
       const result = KUDI.signup(payload);
+      console.log('✅ Signup successful:', result.userId);
       if (!result || !result.userId) throw new Error('Signup failed - no user ID returned');
       KUDI.toast(`Welcome ${result.user.name}! Redirecting...`, 'signal');
-      setTimeout(()=> window.location.href = DEST[selectedRole], 800);
+      
+      // Verify session is ready before redirecting
+      KUDI.validateSessionReady((sess) => {
+        console.log('✅ Session verified, redirecting to', DEST[selectedRole]);
+        window.location.href = DEST[selectedRole];
+      });
     } catch (err) {
+      console.error('❌ Signup error:', err);
       KUDI.toast(err.message || 'Signup failed - please try again', 'danger');
     }
   });
