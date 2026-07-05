@@ -60,6 +60,25 @@ netlify deploy --prod
 `netlify.toml` is already included with sensible security headers and a
 custom 404 fallback.
 
+## Deploy to Render
+
+This prototype can also deploy on Render as a simple Node web service.
+
+1. Push this repository to GitHub.
+2. Add a new service in Render and connect your repo.
+3. Set the service type to **Web Service** and the environment to **Node**.
+4. Use the default branch and set the start command to:
+```bash
+node server.js
+```
+5. Render will install dependencies from `package.json` and start the app.
+
+Alternatively, if you want to deploy locally for testing:
+```bash
+npm install
+npm start
+```
+
 ## What's real vs. simulated
 
 - **Real:** all UI flows, role-based dashboards, escrow status transitions,

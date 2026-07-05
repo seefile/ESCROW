@@ -1,0 +1,14 @@
+{
+  "name": "kudiescrow-prototype",
+  "version": "1.0.0",
+  "description": "Static escrow and logistics prototype for KudiEscrow.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "KudiEscrow Demo",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.4"
+  }
+}
