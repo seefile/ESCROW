@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Shipment Tracking — KudiEscrow</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar" id="sidebar"></aside>
+  <main class="app-main">
+    <div class="app-topbar">
+      <div>
+        <h1>Live Shipment Tracking</h1>
+        <div class="sub" id="routeLabel">— → —</div>
+      </div>
+      <select id="shipSelect" style="padding:10px 14px; border:1px solid var(--line); border-radius:6px; font-size:13px; min-width:220px;"></select>
+    </div>
+
+    <div class="track-map" id="mapWrap">
+      <svg viewBox="0 0 800 420" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <radialGradient id="glow" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stop-color="#B8863B" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#B8863B" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <!-- faint world dots background -->
+        <g opacity="0.18">
+          <circle cx="60" cy="60" r="1.6" fill="#fff"/><circle cx="120" cy="90" r="1.6" fill="#fff"/><circle cx="200" cy="50" r="1.6" fill="#fff"/>
+          <circle cx="300" cy="120" r="1.6" fill="#fff"/><circle cx="400" cy="70" r="1.6" fill="#fff"/><circle cx="500" cy="110" r="1.6" fill="#fff"/>
+          <circle cx="600" cy="60" r="1.6" fill="#fff"/><circle cx="700" cy="100" r="1.6" fill="#fff"/><circle cx="150" cy="200" r="1.6" fill="#fff"/>
+          <circle cx="250" cy="260" r="1.6" fill="#fff"/><circle cx="350" cy="300" r="1.6" fill="#fff"/><circle cx="450" cy="250" r="1.6" fill="#fff"/>
+          <circle cx="550" cy="290" r="1.6" fill="#fff"/><circle cx="650" cy="240" r="1.6" fill="#fff"/><circle cx="720" cy="320" r="1.6" fill="#fff"/>
+          <circle cx="90" cy="330" r="1.6" fill="#fff"/><circle cx="380" cy="180" r="1.6" fill="#fff"/><circle cx="480" cy="180" r="1.6" fill="#fff"/>
+        </g>
+        <circle cx="120" cy="230" r="90" fill="url(#glow)"/>
+        <circle cx="680" cy="190" r="90" fill="url(#glow)"/>
+
+        <path id="routePath" class="route-line" d="M 120 230 C 280 120, 480 320, 680 190" />
+        <path id="routePathDone" class="route-line done" d="M 120 230 C 280 120, 480 320, 680 190" stroke-dasharray="0 1000"/>
+
+        <circle cx="120" cy="230" r="7" class="node active"/>
+        <text x="120" y="258" fill="#F6F4EF" font-family="IBM Plex Mono" font-size="12" text-anchor="middle" id="originLbl">ORIGIN</text>
+
+        <circle cx="680" cy="190" r="7" class="node" id="destNode"/>
+        <text x="680" y="164" fill="#F6F4EF" font-family="IBM Plex Mono" font-size="12" text-anchor="middle" id="destLbl">DESTINATION</text>
+
+        <g id="mover">
+          <circle r="14" fill="#12182B" stroke="#B8863B" stroke-width="2"/>
+          <text id="moverIcon" x="0" y="5" text-anchor="middle" font-size="14">✈️</text>
+        </g>
+      </svg>
+      <div class="track-legend">
+        <span id="modeLegend">✈️ Air Freight</span>
+        <span id="progressLegend">0% complete</span>
+      </div>
+    </div>
+
+    <div class="grid-2 mt-24">
+      <div class="eta-card">
+        <span class="icon">📦</span>
+        <div><b id="etaValue">—</b><span>Estimated Arrival</span></div>
+      </div>
+      <div class="eta-card" style="background:var(--white); color:var(--ink); border:1px solid var(--line);">
+        <span class="icon">🧾</span>
+        <div><b id="txRefLink" style="cursor:pointer; color:var(--brass-dark);">—</b><span style="color:var(--slate-light);">Linked Transaction</span></div>
+      </div>
+    </div>
+
+    <h3 style="font-size:18px;" class="mt-32">Checkpoints</h3>
+    <div class="track-status-strip" id="checkpointStrip"></div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const sess = KUDI.requireSession('login.html');
+  const db = KUDI.load();
+  const me = db.users.find(u=>u.id===sess.userId) || db.users[0];
+  document.getElementById('sidebar').innerHTML = KUDI.sidebar(
+    me.role==='logistics' ? 'logistics' : me.role==='seller' ? 'seller' : me.role==='admin'||me.role==='support' ? 'admin' : 'buyer',
+    'tracking'
+  );
+
+  const select = document.getElementById('shipSelect');
+  select.innerHTML = db.shipments.map(s => `<option value="${s.id}">${s.id.toUpperCase()} — ${s.origin} → ${s.destination}</option>`).join('');
+
+  const params = new URLSearchParams(location.search);
+  const initial = params.get('ship') || db.shipments[0].id;
+  select.value = initial;
+
+  const modeIcon = { air:'✈️', sea:'🚢', road:'🚚' };
+  const modeLabel = { air:'Air Freight', sea:'Sea Freight', road:'Road Transport' };
+
+  function paint(shipId){
+    const s = db.shipments.find(x=>x.id===shipId) || db.shipments[0];
+    document.getElementById('routeLabel').textContent = `${s.origin} → ${s.destination}`;
+    document.getElementById('originLbl').textContent = s.origin.toUpperCase();
+    document.getElementById('destLbl').textContent = s.destination.toUpperCase();
+    document.getElementById('moverIcon').textContent = modeIcon[s.mode];
+    document.getElementById('modeLegend').textContent = modeIcon[s.mode] + ' ' + modeLabel[s.mode];
+    document.getElementById('progressLegend').textContent = Math.round(s.progress*100) + '% complete';
+    document.getElementById('etaValue').textContent = s.eta;
+
+    const tx = db.transactions.find(t=>t.id===s.txId);
+    const refEl = document.getElementById('txRefLink');
+    refEl.textContent = tx ? tx.ref : '—';
+    refEl.onclick = () => { if(tx) location.href = 'transaction.html?id='+tx.id; };
+
+    // path animation: reveal 'done' portion + position mover
+    const path = document.getElementById('routePath');
+    const donePath = document.getElementById('routePathDone');
+    const len = path.getTotalLength();
+    donePath.style.strokeDasharray = (len*s.progress) + ' ' + len;
+    donePath.style.transition = 'stroke-dasharray 1s ease';
+
+    const pt = path.getPointAtLength(len*s.progress);
+    moverBase = { x: pt.x, y: pt.y };
+    const mover = document.getElementById('mover');
+    mover.setAttribute('transform', `translate(${pt.x},${pt.y})`);
+    document.getElementById('destNode').setAttribute('class', 'node' + (s.progress>=1?' active':''));
+
+    document.getElementById('checkpointStrip').innerHTML = s.checkpoints.map(c => `
+      <div class="track-stop ${c.current?'active':''}">
+        <div class="t-label">${c.done ? (c.current?'Current':'Complete') : 'Upcoming'}</div>
+        <div class="t-name">${c.label}</div>
+        <div class="t-date">${c.date}</div>
+      </div>
+    `).join('');
+  }
+
+  let moverBase = { x:120, y:230 };
+  paint(initial);
+  select.addEventListener('change', e => paint(e.target.value));
+
+  // gentle looping bob animation on the mover for a "live" feel
+  let t = 0;
+  setInterval(()=>{
+    t += 0.15;
+    const mover = document.getElementById('mover');
+    mover.setAttribute('transform', `translate(${moverBase.x},${moverBase.y + Math.sin(t)*2})`);
+  }, 100);
+</script>
+</body>
+</html>

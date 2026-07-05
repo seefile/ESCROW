@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logistics Portal — KudiEscrow</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar" id="sidebar"></aside>
+  <main class="app-main">
+    <div class="app-topbar">
+      <div>
+        <h1>Shipment Dashboard</h1>
+        <div class="sub">LOGISTICS PROVIDER · <span id="companyName">SwiftHaul Logistics</span></div>
+      </div>
+      <div class="flex items-center gap-12">
+        <div class="user-chip"><span class="avatar" id="avatarInit">SH</span> <span id="chipName">SwiftHaul Logistics</span></div>
+        <button class="btn btn-brass btn-sm" onclick="KUDI.toast('Pickup request created (demo).','signal')">+ New Pickup</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">Active Shipments</div><div class="value" id="kpiActive">0</div><div class="delta">Air, sea &amp; road</div></div>
+      <div class="kpi"><div class="label">Delivered (30d)</div><div class="value" id="kpiDelivered">0</div><div class="delta">On-time rate 94%</div></div>
+      <div class="kpi"><div class="label">In Customs</div><div class="value" id="kpiCustoms">0</div><div class="delta down">Awaiting clearance</div></div>
+      <div class="kpi"><div class="label">Earnings (30d)</div><div class="value" id="kpiEarnings">$0</div><div class="delta">Freight fees</div></div>
+    </div>
+
+    <div class="flex justify-between items-center mt-32" id="shipments">
+      <h3 style="font-size:18px;">Shipments</h3>
+    </div>
+    <div class="table-wrap mt-16">
+      <table>
+        <thead><tr><th>Shipment</th><th>Mode</th><th>Route</th><th>Progress</th><th>ETA</th><th></th></tr></thead>
+        <tbody id="shipTable"></tbody>
+      </table>
+    </div>
+
+    <div class="grid-2 mt-32">
+      <div class="card">
+        <h3>Performance Analytics</h3>
+        <div class="mt-16 flex justify-between text-sm"><span>On-time delivery</span><b>94%</b></div>
+        <div class="mt-8 flex justify-between text-sm"><span>Customs delay rate</span><b>6%</b></div>
+        <div class="mt-8 flex justify-between text-sm"><span>Avg. rating</span><b>4.7 / 5</b></div>
+      </div>
+      <div class="card">
+        <h3>Fleet Status</h3>
+        <div class="mt-16 flex justify-between text-sm"><span>Available drivers</span><b>14</b></div>
+        <div class="mt-8 flex justify-between text-sm"><span>Warehouses online</span><b>3</b></div>
+        <div class="mt-8 flex justify-between text-sm"><span>Vehicles in transit</span><b>9</b></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  KUDI.requireSession('login.html');
+  const db = KUDI.load();
+  const me = db.users.find(u=>u.role==='logistics');
+  document.getElementById('sidebar').innerHTML = KUDI.sidebar('logistics','overview');
+  document.getElementById('companyName').textContent = me.name;
+  document.getElementById('chipName').textContent = me.name;
+  document.getElementById('avatarInit').textContent = me.initials;
+
+  const shipments = db.shipments;
+  document.getElementById('kpiActive').textContent = shipments.filter(s=>s.progress<1).length;
+  document.getElementById('kpiDelivered').textContent = shipments.filter(s=>s.progress===1).length;
+  document.getElementById('kpiCustoms').textContent = shipments.filter(s=>s.checkpoints.some(c=>c.current && /customs/i.test(c.label))).length;
+  document.getElementById('kpiEarnings').textContent = KUDI.fmtMoney(4260);
+
+  const modeIcon = { air:'✈️', sea:'🚢', road:'🚚' };
+  document.getElementById('shipTable').innerHTML = shipments.map(s => {
+    const tx = db.transactions.find(t=>t.id===s.txId);
+    return `
+    <tr class="row-link" onclick="location.href='tracking.html?ship=${s.id}'">
+      <td class="mono">${s.id.toUpperCase()}</td>
+      <td>${modeIcon[s.mode]} ${s.mode}</td>
+      <td>${s.origin} → ${s.destination}</td>
+      <td style="min-width:140px;">
+        <div style="background:var(--paper-dim); border-radius:6px; height:6px; overflow:hidden;">
+          <div style="width:${Math.round(s.progress*100)}%; background:var(--brass); height:100%;"></div>
+        </div>
+      </td>
+      <td class="text-sm">${s.eta}</td>
+      <td>${KUDI.statusBadge(tx ? tx.status : 'in_transit')}</td>
+    </tr>`;
+  }).join('');
+</script>
+</body>
+</html>

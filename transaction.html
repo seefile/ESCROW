@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transaction — KudiEscrow</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar" id="sidebar"></aside>
+  <main class="app-main">
+    <a href="javascript:history.back()" class="text-sm text-slate">← Back</a>
+
+    <div class="tx-header mt-16">
+      <div class="flex justify-between items-start" style="flex-wrap:wrap; gap:14px;">
+        <div>
+          <div class="ref" id="txRef">KDE-2026-00000</div>
+          <h2 id="txItem">Loading transaction…</h2>
+        </div>
+        <div class="seal" id="txSeal" style="width:74px;height:74px;"><div class="seal-text"><b id="sealText">—</b><small>ESCROW</small></div></div>
+      </div>
+      <div class="tx-progress" id="txProgress"></div>
+      <div class="tx-meta">
+        <div><div class="m-label">Amount</div><div class="m-val" id="txAmount">$0</div></div>
+        <div><div class="m-label">Buyer</div><div class="m-val" id="txBuyer">—</div></div>
+        <div><div class="m-label">Seller</div><div class="m-val" id="txSeller">—</div></div>
+        <div><div class="m-label">Logistics</div><div class="m-val" id="txLogi">—</div></div>
+        <div><div class="m-label">Reference</div><div class="m-val" id="txRef2">—</div></div>
+      </div>
+    </div>
+
+    <div class="tx-layout mt-24">
+      <div>
+        <div class="chat-panel">
+          <div class="chat-head">
+            <div>
+              <b style="font-size:14px;">Transaction Chat</b>
+              <div class="parties mt-8" id="parties"></div>
+            </div>
+            <span class="pill" id="chatStatus">Encrypted</span>
+          </div>
+          <div class="chat-body" id="chatBody"></div>
+          <div class="chat-typing" id="typingRow"></div>
+          <div class="chat-input">
+            <button class="icon-btn" title="Attach file" onclick="attachEvidence()">📎</button>
+            <input type="text" id="msgInput" placeholder="Message the other party…">
+            <button class="icon-btn" title="Send" onclick="sendMessage()">➤</button>
+          </div>
+        </div>
+
+        <div class="card mt-24">
+          <h3>Actions</h3>
+          <div class="flex gap-12 mt-16" style="flex-wrap:wrap;" id="actionButtons"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3>Shipment Timeline</h3>
+          <ul class="timeline mt-16" id="timeline"></ul>
+          <a href="#" id="trackLink" class="btn btn-ghost btn-block mt-16">View Live Tracking →</a>
+        </div>
+        <div class="card mt-24">
+          <h3>Evidence</h3>
+          <div id="evidenceList" class="mt-16"></div>
+          <p class="text-sm text-slate mt-8">Photos, invoices, and shipping documents uploaded to this transaction appear here.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const sess = KUDI.requireSession('login.html');
+  let db = KUDI.load();
+  const me = db.users.find(u=>u.id===sess.userId) || db.users[0];
+  document.getElementById('sidebar').innerHTML = KUDI.sidebar(me.role === 'buyer' ? 'buyer' : me.role==='seller' ? 'seller' : me.role==='logistics' ? 'logistics' : 'admin', 'transactions');
+
+  const params = new URLSearchParams(location.search);
+  const txId = params.get('id') || (db.transactions[0] && db.transactions[0].id);
+  const tx = db.transactions.find(t=>t.id===txId) || db.transactions[0];
+  const shipment = db.shipments.find(s=>s.id===tx.shipmentId);
+
+  function uname(id){ return (db.users.find(u=>u.id===id)||{}).name || '—'; }
+
+  function paintHeader(){
+    document.getElementById('txRef').textContent = tx.ref;
+    document.getElementById('txRef2').textContent = tx.ref;
+    document.getElementById('txItem').textContent = tx.item;
+    document.getElementById('txAmount').textContent = KUDI.fmtMoney(tx.amount, tx.currency);
+    document.getElementById('txBuyer').textContent = uname(tx.buyerId);
+    document.getElementById('txSeller').textContent = uname(tx.sellerId);
+    document.getElementById('txLogi').textContent = uname(tx.logisticsId);
+
+    const seal = document.getElementById('txSeal');
+    const sealMap = { funded:['slate','HELD'], in_transit:['slate','HELD'], delivered:['brass','REVIEW'], released:['','RELEASED'], disputed:['rust','FROZEN'], refunded:['rust','REFUNDED'] };
+    const [cls,label] = sealMap[tx.status] || ['slate','HELD'];
+    seal.className = 'seal '+cls;
+    document.getElementById('sealText').textContent = label;
+
+    const stages = tx.stages;
+    document.getElementById('txProgress').innerHTML = stages.map((s,i)=>`<div class="seg ${i<=tx.stageIndex?'done':''}" title="${s}"></div>`).join('');
+    document.getElementById('trackLink').href = 'tracking.html?ship='+(shipment?shipment.id:'');
+  }
+  paintHeader();
+
+  function paintTimeline(){
+    const cps = shipment ? shipment.checkpoints : [];
+    document.getElementById('timeline').innerHTML = cps.map(c => `
+      <li><span class="t-dot ${c.done?'':'pending'}"></span>
+        <div><div style="font-size:13.5px;">${c.label}</div><div class="t-time">${c.date}</div></div>
+      </li>`).join('') || '<li>No shipment linked yet.</li>';
+  }
+  paintTimeline();
+
+  function paintEvidence(){
+    const msgs = db.messages[tx.id] || [];
+    const files = msgs.filter(m=>m.evidence);
+    document.getElementById('evidenceList').innerHTML = files.length ? files.map(f=>`
+      <div class="evidence-item"><span class="ftype">🖼️</span><span>${f.evidence}</span></div>
+    `).join('') : '<p class="text-sm text-slate">No evidence uploaded yet.</p>';
+  }
+
+  document.getElementById('parties').innerHTML = `
+    <span class="pill">👤 ${uname(tx.buyerId)}</span>
+    <span class="pill">🏭 ${uname(tx.sellerId)}</span>
+    ${tx.status==='disputed' ? '<span class="pill" style="background:var(--rust-soft); color:var(--rust);">🛟 Support</span>' : ''}
+  `;
+
+  function paintChat(){
+    const msgs = db.messages[tx.id] || [];
+    document.getElementById('chatBody').innerHTML = msgs.map(m => {
+      if(m.from === 'system'){
+        return `<div class="msg system ${m.dispute?'dispute':''}">${m.text}</div>`;
+      }
+      const mine = m.from === me.id;
+      return `<div class="msg ${mine?'mine':'theirs'}">
+        <div class="m-meta">${uname(m.from)} · ${KUDI.timeAgo(m.t)}</div>
+        ${m.text}
+      </div>`;
+    }).join('');
+    const body = document.getElementById('chatBody');
+    body.scrollTop = body.scrollHeight;
+    paintEvidence();
+  }
+  paintChat();
+
+  function sendMessage(){
+    const input = document.getElementById('msgInput');
+    const text = input.value.trim();
+    if(!text) return;
+    db.messages[tx.id] = db.messages[tx.id] || [];
+    db.messages[tx.id].push({ from: me.id, text, t: Date.now() });
+    KUDI.save(db);
+    input.value = '';
+    paintChat();
+  }
+  document.getElementById('msgInput').addEventListener('keydown', e=>{ if(e.key==='Enter') sendMessage(); });
+
+  function attachEvidence(){
+    const files = ['delivery_photo.jpg','invoice.pdf','weighbridge_ticket.png','packing_list.pdf'];
+    const f = files[Math.floor(Math.random()*files.length)];
+    db.messages[tx.id] = db.messages[tx.id] || [];
+    db.messages[tx.id].push({ from: me.id, text: `Uploaded evidence: ${f}`, t: Date.now(), evidence: f });
+    KUDI.save(db);
+    KUDI.toast('Evidence attached to transaction.', 'signal');
+    paintChat();
+  }
+
+  function paintActions(){
+    const box = document.getElementById('actionButtons');
+    let html = '';
+    if(me.role === 'buyer' && tx.status === 'in_transit'){
+      html += `<button class="btn btn-primary" onclick="confirmDelivery()">Confirm Delivery &amp; Release Funds</button>`;
+    }
+    if(me.role === 'buyer' && ['in_transit','delivered'].includes(tx.status)){
+      html += `<button class="btn btn-danger" onclick="openDispute()">Report a Problem / Open Dispute</button>`;
+    }
+    if(me.role === 'seller' && tx.status === 'funded'){
+      html += `<button class="btn btn-primary" onclick="markShipped()">Mark as Shipped</button>`;
+    }
+    if(tx.status === 'disputed'){
+      html += `<span class="badge badge-dispute" style="padding:10px 16px;">Funds frozen pending resolution</span>`;
+    }
+    if(tx.status === 'released'){
+      html += `<span class="badge badge-released" style="padding:10px 16px;">Funds released</span>`;
+    }
+    if(tx.status === 'refunded'){
+      html += `<span class="badge badge-dispute" style="padding:10px 16px;">Buyer refunded</span>`;
+    }
+    box.innerHTML = html || '<span class="text-sm text-slate">No actions available at this stage.</span>';
+  }
+  paintActions();
+
+  function confirmDelivery(){
+    tx.status = 'released'; tx.stageIndex = 4;
+    db.messages[tx.id].push({ from:'system', text:'Delivery confirmed by buyer. Funds released to seller.', t: Date.now() });
+    KUDI.logAudit(db, `${tx.ref} — buyer confirmed delivery, funds released.`, uname(me.id));
+    KUDI.save(db);
+    KUDI.toast('Funds released to seller.', 'signal');
+    paintHeader(); paintChat(); paintActions();
+  }
+  function markShipped(){
+    tx.status = 'in_transit'; tx.stageIndex = 2;
+    db.messages[tx.id].push({ from:'system', text:'Seller marked order as shipped.', t: Date.now() });
+    KUDI.save(db);
+    KUDI.toast('Order marked as shipped.', 'signal');
+    paintHeader(); paintChat(); paintActions();
+  }
+  function openDispute(){
+    tx.status = 'disputed';
+    db.messages[tx.id].push({ from:'system', text:'Dispute opened by buyer. Escrow funds frozen. Support has been notified.', t: Date.now(), dispute:true });
+    KUDI.logAudit(db, `${tx.ref} — dispute opened by buyer, funds frozen.`, uname(me.id));
+    KUDI.save(db);
+    KUDI.toast('Dispute opened. Support will join shortly.', 'rust');
+    document.getElementById('parties').innerHTML += '<span class="pill" style="background:var(--rust-soft); color:var(--rust);">🛟 Support</span>';
+    paintHeader(); paintChat(); paintActions();
+  }
+</script>
+</body>
+</html>

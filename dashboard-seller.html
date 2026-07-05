@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seller Dashboard — KudiEscrow</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar" id="sidebar"></aside>
+  <main class="app-main">
+    <div class="app-topbar">
+      <div>
+        <h1>Orders &amp; Escrow — <span id="userName">Obi Trading Co.</span></h1>
+        <div class="sub">SELLER ACCOUNT · TRUST SCORE <span id="trustScore">91</span></div>
+      </div>
+      <div class="flex items-center gap-12">
+        <div class="user-chip"><span class="avatar" id="avatarInit">OT</span> <span id="chipName">Obi Trading Co.</span></div>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">Pending Payout</div><div class="value" id="kpiPending">$0</div><div class="delta">Held in escrow</div></div>
+      <div class="kpi"><div class="label">Orders In Progress</div><div class="value" id="kpiActive">0</div><div class="delta">Awaiting delivery</div></div>
+      <div class="kpi"><div class="label">Open Disputes</div><div class="value" id="kpiDisputes">0</div><div class="delta down">Needs response</div></div>
+      <div class="kpi"><div class="label">Paid Out (30d)</div><div class="value" id="kpiPaid">$0</div><div class="delta">Released to wallet</div></div>
+    </div>
+
+    <div class="flex justify-between items-center mt-32" id="transactions">
+      <h3 style="font-size:18px;">Orders</h3>
+      <input placeholder="Search reference or item…" id="searchTx" style="padding:9px 14px; border:1px solid var(--line); border-radius:20px; font-size:13px; width:240px;">
+    </div>
+    <div class="table-wrap mt-16">
+      <table>
+        <thead><tr><th>Reference</th><th>Item</th><th>Buyer</th><th>Amount</th><th>Status</th><th>Updated</th></tr></thead>
+        <tbody id="txTable"></tbody>
+      </table>
+    </div>
+
+    <div class="grid-2 mt-32">
+      <div class="card">
+        <h3>Trust Score</h3>
+        <p style="font-family:var(--font-display); font-size:40px; margin:10px 0;">91<span style="font-size:16px; color:var(--slate);">/100</span></p>
+        <p>Based on delivery performance, dispute rate, and buyer reviews over the last 90 days.</p>
+      </div>
+      <div class="card">
+        <h3>Recent Reviews</h3>
+        <div class="mt-16" style="font-size:13px; color:var(--slate);">
+          <p>★★★★★ "Fast shipping, exactly as described." — Amara C.</p>
+          <p class="mt-8">★★★★☆ "Good quality, minor delay in customs." — Femi A.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const sess = KUDI.requireSession('login.html');
+  const db = KUDI.load();
+  let me = db.users.find(u=>u.id===sess.userId);
+  if(!me || me.role!=='seller') me = db.users.find(u=>u.role==='seller');
+
+  document.getElementById('sidebar').innerHTML = KUDI.sidebar('seller','overview');
+  document.getElementById('userName').textContent = me.name;
+  document.getElementById('trustScore').textContent = me.trust;
+  document.getElementById('chipName').textContent = me.name;
+  document.getElementById('avatarInit').textContent = me.initials;
+
+  const myTx = db.transactions.filter(t => t.sellerId === me.id);
+
+  document.getElementById('kpiPending').textContent = KUDI.fmtMoney(myTx.filter(t=>!['released','refunded'].includes(t.status)).reduce((s,t)=>s+t.amount,0));
+  document.getElementById('kpiActive').textContent = myTx.filter(t=>['funded','in_transit','delivered'].includes(t.status)).length;
+  document.getElementById('kpiDisputes').textContent = myTx.filter(t=>t.status==='disputed').length;
+  document.getElementById('kpiPaid').textContent = KUDI.fmtMoney(myTx.filter(t=>t.status==='released').reduce((s,t)=>s+t.amount,0));
+
+  function buyerName(id){ return (db.users.find(u=>u.id===id)||{}).name || '—'; }
+
+  function renderTx(list){
+    document.getElementById('txTable').innerHTML = list.map(t => `
+      <tr class="row-link" onclick="location.href='transaction.html?id=${t.id}'">
+        <td class="mono">${t.ref}</td>
+        <td>${t.item}</td>
+        <td>${buyerName(t.buyerId)}</td>
+        <td class="mono">${KUDI.fmtMoney(t.amount, t.currency)}</td>
+        <td>${KUDI.statusBadge(t.status)}</td>
+        <td class="text-slate text-sm">${KUDI.timeAgo(t.createdAt)}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="6"><div class="empty-state"><h3>No orders yet</h3><p>Orders funded by buyers will appear here.</p></div></td></tr>`;
+  }
+  renderTx(myTx);
+  document.getElementById('searchTx').addEventListener('input', (e)=>{
+    const q = e.target.value.toLowerCase();
+    renderTx(myTx.filter(t => t.ref.toLowerCase().includes(q) || t.item.toLowerCase().includes(q)));
+  });
+</script>
+</body>
+</html>

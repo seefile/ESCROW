@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buyer Dashboard — KudiEscrow</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="app-sidebar" id="sidebar"></aside>
+  <main class="app-main">
+    <div class="app-topbar">
+      <div>
+        <h1>Welcome back, <span id="userName">Amara</span></h1>
+        <div class="sub">BUYER ACCOUNT · TRUST SCORE <span id="trustScore">96</span></div>
+      </div>
+      <div class="flex items-center gap-12">
+        <div class="user-chip"><span class="avatar" id="avatarInit">AC</span> <span id="chipName">Amara Chen</span></div>
+        <a href="signup.html" class="btn btn-brass btn-sm">+ New Transaction</a>
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">Funds in Escrow</div><div class="value" id="kpiEscrow">$0</div><div class="delta">Across active deals</div></div>
+      <div class="kpi"><div class="label">Active Transactions</div><div class="value" id="kpiActive">0</div><div class="delta">In progress</div></div>
+      <div class="kpi"><div class="label">Open Disputes</div><div class="value" id="kpiDisputes">0</div><div class="delta down">Needs attention</div></div>
+      <div class="kpi"><div class="label">Completed Deals</div><div class="value" id="kpiDone">0</div><div class="delta">Released to sellers</div></div>
+    </div>
+
+    <div class="flex justify-between items-center mt-32" id="transactions">
+      <h3 style="font-size:18px;">Your Transactions</h3>
+      <input placeholder="Search reference or item…" id="searchTx" style="padding:9px 14px; border:1px solid var(--line); border-radius:20px; font-size:13px; width:240px;">
+    </div>
+    <div class="table-wrap mt-16">
+      <table>
+        <thead><tr><th>Reference</th><th>Item</th><th>Seller</th><th>Amount</th><th>Status</th><th>Updated</th></tr></thead>
+        <tbody id="txTable"></tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:18px;" class="mt-32">Notifications</h3>
+    <div class="table-wrap mt-16" id="notifList" style="padding: 6px 0;"></div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const sess = KUDI.requireSession('login.html');
+  const db = KUDI.load();
+  const me = db.users.find(u=>u.id===sess.userId) || db.users.find(u=>u.role==='buyer');
+
+  document.getElementById('sidebar').innerHTML = KUDI.sidebar('buyer','overview');
+  document.getElementById('userName').textContent = me.name.split(' ')[0];
+  document.getElementById('trustScore').textContent = me.trust;
+  document.getElementById('chipName').textContent = me.name;
+  document.getElementById('avatarInit').textContent = me.initials;
+
+  const myTx = db.transactions.filter(t => t.buyerId === me.id || me.role !== 'buyer');
+
+  document.getElementById('kpiEscrow').textContent = KUDI.fmtMoney(myTx.filter(t=>!['released','refunded'].includes(t.status)).reduce((s,t)=>s+t.amount,0));
+  document.getElementById('kpiActive').textContent = myTx.filter(t=>['funded','in_transit','delivered'].includes(t.status)).length;
+  document.getElementById('kpiDisputes').textContent = myTx.filter(t=>t.status==='disputed').length;
+  document.getElementById('kpiDone').textContent = myTx.filter(t=>t.status==='released').length;
+
+  function sellerName(id){ return (db.users.find(u=>u.id===id)||{}).name || '—'; }
+
+  function renderTx(list){
+    document.getElementById('txTable').innerHTML = list.map(t => `
+      <tr class="row-link" onclick="location.href='transaction.html?id=${t.id}'">
+        <td class="mono">${t.ref}</td>
+        <td>${t.item}</td>
+        <td>${sellerName(t.sellerId)}</td>
+        <td class="mono">${KUDI.fmtMoney(t.amount, t.currency)}</td>
+        <td>${KUDI.statusBadge(t.status)}</td>
+        <td class="text-slate text-sm">${KUDI.timeAgo(t.createdAt)}</td>
+      </tr>
+    `).join('') || `<tr><td colspan="6"><div class="empty-state"><h3>No transactions yet</h3><p>Start your first escrow transaction to see it here.</p></div></td></tr>`;
+  }
+  renderTx(myTx);
+
+  document.getElementById('searchTx').addEventListener('input', (e)=>{
+    const q = e.target.value.toLowerCase();
+    renderTx(myTx.filter(t => t.ref.toLowerCase().includes(q) || t.item.toLowerCase().includes(q)));
+  });
+
+  document.getElementById('notifList').innerHTML = db.notifications.map(n => `
+    <div class="flex justify-between items-center" style="padding:14px 18px; border-bottom:1px solid var(--line);">
+      <div class="flex items-center gap-12">
+        <span style="width:8px;height:8px;border-radius:50%; background:${n.read?'var(--line)':'var(--brass)'}; display:inline-block;"></span>
+        <span class="text-sm">${n.text}</span>
+      </div>
+      <span class="text-sm text-slate mono">${KUDI.timeAgo(n.t)}</span>
+    </div>
+  `).join('');
+</script>
+</body>
+</html>
