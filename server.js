@@ -3,6 +3,8 @@ const cookieParser = require('cookie-parser');
 const path = require('path');
 const crypto = require('crypto');
 const { Pool } = require('pg');
+const http = require('http');
+const WebSocket = require('ws');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -127,7 +129,14 @@ async function loadState() {
     await saveState(state);
     return state;
   }
-  return rows[0].value;
+  const state = rows[0].value;
+  if (!state || !state.users) {
+    console.error('Invalid state loaded from DB:', state);
+    const freshState = seedState();
+    await saveState(freshState);
+    return freshState;
+  }
+  return state;
 }
 
 async function saveState(state) {
@@ -266,8 +275,80 @@ app.get('*', (req, res) => {
 
 initDatabase()
   .then(() => {
-    app.listen(port, () => {
+    // Create HTTP server and attach WebSocket
+    const server = http.createServer(app);
+    const wss = new WebSocket.Server({ server });
+
+    // Map to store connected clients by transaction ID
+    const transactionConnections = new Map();
+
+    wss.on('connection', (ws, req) => {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const txId = url.searchParams.get('txId');
+      const userId = url.searchParams.get('userId');
+
+      if (!txId || !userId) {
+        ws.close(1008, 'Missing txId or userId');
+        return;
+      }
+
+      // Store connection
+      if (!transactionConnections.has(txId)) {
+        transactionConnections.set(txId, []);
+      }
+      transactionConnections.get(txId).push({ ws, userId });
+
+      console.log(`WebSocket: User ${userId} joined transaction ${txId}`);
+
+      ws.on('message', async (message) => {
+        try {
+          const data = JSON.parse(message);
+          
+          // Save message to database
+          const state = await loadState();
+          if (!state.messages[txId]) state.messages[txId] = [];
+          state.messages[txId].push({
+            from: userId,
+            text: data.text,
+            t: Date.now(),
+            evidence: data.evidence || null
+          });
+          await saveState(state);
+
+          // Broadcast to all clients in this transaction
+          const clients = transactionConnections.get(txId) || [];
+          const broadcast = {
+            type: 'message',
+            from: userId,
+            text: data.text,
+            t: Date.now(),
+            evidence: data.evidence || null
+          };
+          clients.forEach(({ ws: client }) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify(broadcast));
+            }
+          });
+        } catch (err) {
+          console.error('WebSocket message error:', err);
+        }
+      });
+
+      ws.on('close', () => {
+        const clients = transactionConnections.get(txId) || [];
+        const idx = clients.findIndex(c => c.ws === ws);
+        if (idx !== -1) clients.splice(idx, 1);
+        console.log(`WebSocket: User ${userId} left transaction ${txId}`);
+      });
+
+      ws.on('error', (err) => {
+        console.error('WebSocket error:', err);
+      });
+    });
+
+    server.listen(port, () => {
       console.log(`KudiEscrow backend running on http://localhost:${port}`);
+      console.log(`WebSocket server available at ws://localhost:${port}`);
     });
   })
   .catch(error => {

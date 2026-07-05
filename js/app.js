@@ -156,9 +156,51 @@ const KUDI = (function(){
     save(db);
   }
 
+  let wsConnection = null;
+  function connectWebSocket(txId, onMessage) {
+    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+      wsConnection.close();
+    }
+    try {
+      const sess = getSession();
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}?txId=${txId}&userId=${sess.userId}`;
+      wsConnection = new WebSocket(wsUrl);
+      wsConnection.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (onMessage) onMessage(msg);
+        } catch (err) {
+          console.error('WebSocket message parse error:', err);
+        }
+      };
+      wsConnection.onerror = (err) => {
+        console.error('WebSocket error:', err);
+        toast('Real-time connection lost. Using polling.', 'warning');
+      };
+      return wsConnection;
+    } catch (err) {
+      console.error('WebSocket connection error:', err);
+      return null;
+    }
+  }
+
+  function sendWebSocketMessage(txId, text, evidence = null) {
+    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+      wsConnection.send(JSON.stringify({ text, evidence }));
+    }
+  }
+
+  function closeWebSocket() {
+    if (wsConnection && wsConnection.readyState === WebSocket.OPEN) {
+      wsConnection.close();
+    }
+  }
+
   return {
     fmtMoney, timeAgo, initialsOf, toast, requireSession, statusBadge,
     sidebar, load, save, reset, getSession, clearSession,
     login, loginRole, signup, logAudit,
+    connectWebSocket, sendWebSocketMessage, closeWebSocket,
   };
 })();
