@@ -9,7 +9,10 @@ const WebSocket = require('ws');
 const app = express();
 const port = process.env.PORT || 3000;
 const dbUrl = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/kudiescrow';
-const pool = new Pool({ connectionString: dbUrl });
+const pool = new Pool({
+  connectionString: dbUrl,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+});
 const SESSION_COOKIE = 'session_token';
 const DEMO_PASSWORD = 'demo1234';
 const STATE_KEY = 'app_state';
@@ -347,8 +350,12 @@ initDatabase()
     });
 
     server.listen(port, () => {
-      console.log(`KudiEscrow backend running on http://localhost:${port}`);
-      console.log(`WebSocket server available at ws://localhost:${port}`);
+      const hostname = process.env.RENDER_EXTERNAL_HOSTNAME || process.env.HOSTNAME || 'localhost';
+      const protocol = process.env.PORT ? 'https' : 'http';
+      const baseUrl = hostname === 'localhost' ? `http://localhost:${port}` : `${protocol}://${hostname}`;
+      const wsProtocol = baseUrl.startsWith('https') ? 'wss' : 'ws';
+      console.log(`KudiEscrow backend running on ${baseUrl}`);
+      console.log(`WebSocket server available at ${wsProtocol}://${hostname}:${port}`);
     });
   })
   .catch(error => {
