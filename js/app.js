@@ -43,9 +43,43 @@ const KUDI = (function(){
   function requireSession(redirectTo){
     try{
       const sess = getSession();
-      if(!sess || !sess.userId){ window.location.href = redirectTo || 'login.html'; return null; }
+      if(!sess || !sess.userId){ 
+        console.warn('No valid session found, redirecting to login');
+        window.location.href = redirectTo || 'login.html'; 
+        return null; 
+      }
+      console.log('Session valid for user:', sess.userId);
       return sess;
-    }catch(e){ window.location.href = redirectTo || 'login.html'; return null; }
+    }catch(e){ 
+      console.error('Session check error:', e);
+      window.location.href = redirectTo || 'login.html'; 
+      return null; 
+    }
+  }
+
+  function validateSessionReady(callback, maxAttempts = 10) {
+    let attempts = 0;
+    const checkSession = () => {
+      try {
+        const sess = getSession();
+        if (sess && sess.userId) {
+          if (callback) callback(sess);
+          return;
+        }
+      } catch (e) {
+        console.warn(`Session check attempt ${attempts + 1} failed:`, e.message);
+      }
+      
+      if (attempts < maxAttempts) {
+        attempts++;
+        setTimeout(checkSession, 150);
+      } else {
+        console.error('Session validation failed after multiple attempts');
+        window.location.href = 'login.html';
+      }
+    };
+    
+    checkSession();
   }
 
   function statusBadge(status){
@@ -202,5 +236,6 @@ const KUDI = (function(){
     sidebar, load, save, reset, getSession, clearSession,
     login, loginRole, signup, logAudit,
     connectWebSocket, sendWebSocketMessage, closeWebSocket,
+    validateSessionReady,
   };
 })();

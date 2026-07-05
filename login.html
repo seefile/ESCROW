@@ -68,11 +68,12 @@
     const password = document.getElementById('password').value;
     try {
       const result = KUDI.login(email, password);
+      if (!result || !result.userId) throw new Error('Login failed - no user ID returned');
       const role = result.user.role;
-      KUDI.toast(`Welcome back, ${result.user.name}.`, 'signal');
-      setTimeout(()=> location.href = DEST_BY_ROLE[role] || 'dashboard-buyer.html', 400);
+      KUDI.toast(`Welcome back, ${result.user.name}!`, 'signal');
+      setTimeout(()=> window.location.href = DEST_BY_ROLE[role] || 'dashboard-buyer.html', 600);
     } catch (err) {
-      KUDI.toast(err.message, 'danger');
+      KUDI.toast(err.message || 'Login failed - please try again', 'danger');
     }
   });
 
@@ -83,10 +84,11 @@
       const role = opt.dataset.role;
       try {
         const result = KUDI.loginRole(role);
+        if (!result || !result.userId) throw new Error('Login failed - no user ID returned');
         KUDI.toast(`Signed in as ${role} (demo).`, 'signal');
-        setTimeout(()=> location.href = DEST_BY_ROLE[role], 400);
+        setTimeout(()=> window.location.href = DEST_BY_ROLE[role], 600);
       } catch (err) {
-        KUDI.toast(err.message, 'danger');
+        KUDI.toast(err.message || 'Login failed - please try again', 'danger');
       }
     });
   });

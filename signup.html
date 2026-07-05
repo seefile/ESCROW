@@ -75,11 +75,12 @@
         country: document.getElementById('scountry').value,
         password: document.getElementById('spass').value,
       };
-      KUDI.signup(payload);
-      KUDI.toast('Account created. KYC verification pending (demo).', 'signal');
-      setTimeout(()=> location.href = DEST[selectedRole], 500);
+      const result = KUDI.signup(payload);
+      if (!result || !result.userId) throw new Error('Signup failed - no user ID returned');
+      KUDI.toast(`Welcome ${result.user.name}! Redirecting...`, 'signal');
+      setTimeout(()=> window.location.href = DEST[selectedRole], 800);
     } catch (err) {
-      KUDI.toast(err.message, 'danger');
+      KUDI.toast(err.message || 'Signup failed - please try again', 'danger');
     }
   });
 </script>
