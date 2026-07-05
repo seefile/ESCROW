@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: kudiescrow-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ALLOW_DEV_RESET
+        value: false
+      - key: ADMIN_NAME
+        value: Platform Admin
+      - key: ADMIN_EMAIL
+        value: admin@kudiescrow.local
+      - key: ADMIN_PASSWORD
+        value: ChangeMe123!
+      - key: ADMIN_ROLE
+        value: admin
