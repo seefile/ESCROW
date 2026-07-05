@@ -5,11 +5,16 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: node server.js
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: ALLOW_DEV_RESET
         value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kudiescrow-db
+          property: connectionString
       - key: ADMIN_NAME
         value: Platform Admin
       - key: ADMIN_EMAIL
@@ -18,3 +23,9 @@ services:
         value: ChangeMe123!
       - key: ADMIN_ROLE
         value: admin
+
+databases:
+  - name: kudiescrow-db
+    databaseName: kudiescrow
+    user: postgres
+    plan: free
