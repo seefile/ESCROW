@@ -279,6 +279,31 @@ app.post('/api/db', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Debug endpoint for inspecting cookies and session (dev only or when ALLOW_DEBUG=true)
+app.get('/api/debug/session', async (req, res) => {
+  const allow = process.env.ALLOW_DEBUG === 'true' || isDevelopmentEnvironment();
+  if (!allow) return res.status(404).json({ error: 'Not found' });
+  try {
+    const sessionInfo = {
+      headers: req.headers,
+      cookies: req.cookies,
+      session: req.session,
+    };
+    // include some rows from the session store for debugging if available
+    let sessionRows = null;
+    try {
+      const { rows } = await pool.query('SELECT sid, expire FROM user_sessions ORDER BY expire DESC LIMIT 10');
+      sessionRows = rows;
+    } catch (e) {
+      sessionRows = { error: 'unable to query user_sessions table', message: e.message };
+    }
+    res.json({ sessionInfo, sessionRows });
+  } catch (err) {
+    console.error('Debug endpoint error:', err);
+    res.status(500).json({ error: 'Debug error' });
+  }
+});
+
 app.post('/api/db/reset', async (req, res) => {
   if (!isResetAllowed()) {
     return res.status(403).json({ error: 'Development database reset is disabled in this environment' });
