@@ -57,7 +57,7 @@ const KUDI = (function(){
     }
   }
 
-  function validateSessionReady(callback, maxAttempts = 10) {
+  function validateSessionReady(callback, maxAttempts = 40) {
     let attempts = 0;
     const checkSession = () => {
       try {
@@ -67,12 +67,13 @@ const KUDI = (function(){
           return;
         }
       } catch (e) {
-        console.warn(`Session check attempt ${attempts + 1} failed:`, e.message);
+        console.warn(`Session check attempt ${attempts + 1} failed:`, e && e.message ? e.message : e);
       }
       
       if (attempts < maxAttempts) {
         attempts++;
-        setTimeout(checkSession, 150);
+        // slightly longer interval to allow cookies to propagate behind proxies/load-balancers
+        setTimeout(checkSession, 300);
       } else {
         console.error('Session validation failed after multiple attempts');
         window.location.href = 'login.html';

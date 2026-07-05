@@ -2,6 +2,9 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const crypto = require('crypto');
+const bcrypt = require('bcrypt');
+const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const { Pool } = require('pg');
 const http = require('http');
 const WebSocket = require('ws');
@@ -15,6 +18,7 @@ const pool = new Pool({
   ssl: shouldUseSsl ? { rejectUnauthorized: false } : false,
 });
 const SESSION_COOKIE = process.env.SESSION_COOKIE_NAME || 'session_token';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'kudiescrow-dev-secret';
 const STATE_KEY = 'app_state';
 
 function isDevelopmentEnvironment() {
@@ -100,7 +104,11 @@ const seedState = () => buildSeedState();
 
 async function initDatabase() {
   await pool.query(`CREATE TABLE IF NOT EXISTS app_state (key text PRIMARY KEY, value jsonb NOT NULL);`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS sessions (token text PRIMARY KEY, user_id text, created_at timestamptz DEFAULT now(), expires_at timestamptz);`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS user_sessions (
+    sid varchar PRIMARY KEY,
+    sess json NOT NULL,
+    expire timestamp(6) NOT NULL
+  );`);
   const { rows } = await pool.query('SELECT value FROM app_state WHERE key = $1', [STATE_KEY]);
   if (rows.length === 0) {
     await pool.query('INSERT INTO app_state(key,value) VALUES($1,$2)', [STATE_KEY, seedState()]);
@@ -128,39 +136,30 @@ async function saveState(state) {
   await pool.query('INSERT INTO app_state(key,value) VALUES($1,$2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [STATE_KEY, state]);
 }
 
-function createToken() {
-  return crypto.randomBytes(24).toString('hex');
-}
-
-async function createSession(userId) {
-  const token = createToken();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  await pool.query('INSERT INTO sessions(token,user_id,expires_at) VALUES($1,$2,$3)', [token, userId, expiresAt]);
-  return token;
-}
-
-async function getSession(req) {
-  const token = req.cookies[SESSION_COOKIE];
-  if (!token) return null;
-  const { rows } = await pool.query('SELECT user_id, expires_at FROM sessions WHERE token = $1', [token]);
-  if (rows.length === 0) return null;
-  const row = rows[0];
-  if (new Date(row.expires_at) < new Date()) {
-    await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
-    return null;
-  }
-  return { token, userId: row.user_id };
-}
-
-async function clearSession(req) {
-  const token = req.cookies[SESSION_COOKIE];
-  if (token) {
-    await pool.query('DELETE FROM sessions WHERE token = $1', [token]);
-  }
-}
-
+app.set('trust proxy', 1);
 app.use(cookieParser());
 app.use(express.json());
+app.use(session({
+  name: SESSION_COOKIE,
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  store: new pgSession({
+    pool,
+    tableName: 'user_sessions',
+    pruneSessionInterval: 0,
+    createTableIfMissing: true,
+  }),
+  proxy: true,
+  cookie: {
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production' || process.env.RENDER === 'true',
+    sameSite: 'lax',
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+    domain: process.env.SESSION_COOKIE_DOMAIN || undefined,
+  },
+}));
 app.use(express.static(path.join(__dirname)));
 
 app.get('/api/health', async (req, res) => {
@@ -174,70 +173,96 @@ app.get('/api/health', async (req, res) => {
 });
 
 app.get('/api/session', async (req, res) => {
-  const session = await getSession(req);
-  if (!session) {
+  if (!req.session?.userId) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   const state = await loadState();
-  const user = state.users.find(u => u.id === session.userId);
+  const user = state.users.find(u => u.id === req.session.userId);
   if (!user) {
+    req.session.destroy(() => {});
     return res.status(401).json({ error: 'Unauthorized' });
   }
-  res.json({ userId: user.id, user });
+  const safeUser = Object.assign({}, user);
+  delete safeUser.passwordHash;
+  res.json({ userId: user.id, user: safeUser });
 });
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password, role } = req.body;
   const state = await loadState();
-  const admin = getAdminConfig();
-  const user = state.users.find(u => u.email === admin.email || u.role === admin.role);
+  const normalizedEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  let user = null;
+
+  if (normalizedEmail) {
+    user = state.users.find(u => u.email && u.email.toLowerCase() === normalizedEmail);
+  } else if (role) {
+    user = state.users.find(u => u.role === role);
+  }
 
   if (!user) {
-    return res.status(400).json({ error: 'Admin account not seeded' });
+    return res.status(400).json({ error: 'User not found' });
   }
 
-  if (email && email.trim().toLowerCase() !== admin.email.toLowerCase()) {
-    return res.status(401).json({ error: 'Invalid admin credentials' });
+  if (password) {
+    if (!user.passwordHash) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+    const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+    if (!passwordMatches) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
   }
 
-  if (password && password !== admin.password) {
-    return res.status(401).json({ error: 'Invalid password' });
-  }
-
-  const token = await createSession(user.id);
-  res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax' });
-  res.json({
-    userId: user.id,
-    user: {
-      ...user,
-      role: role || user.role,
-    },
+  req.session.userId = user.id;
+  req.session.role = user.role;
+  // Explicitly ensure session cookie is set before responding
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error:', err);
+      return res.status(500).json({ error: 'Unable to create session' });
+    }
+    // Force Set-Cookie header to be sent
+    res.setHeader('Cache-Control', 'no-store');
+    const safe = Object.assign({}, user); delete safe.passwordHash;
+    res.json({ userId: user.id, user: safe });
   });
 });
 
-app.post('/api/auth/signup', async (req, res) => {
+app.post(['/api/auth/signup', '/api/auth/register'], async (req, res) => {
   const { name, email, role, country, password } = req.body;
   if (!name || !email || !role || !password) {
     return res.status(400).json({ error: 'Missing signup fields' });
   }
   const state = await loadState();
-  if (state.users.some(u => u.email === email)) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (state.users.some(u => u.email && u.email.toLowerCase() === normalizedEmail)) {
     return res.status(400).json({ error: 'Email already in use' });
   }
+  const passwordHash = await bcrypt.hash(password, 12);
   const id = `u_${crypto.randomBytes(3).toString('hex')}`;
   const initials = name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-  const user = { id, name, role, email, trust: 85, initials };
+  const user = { id, name, role, email: normalizedEmail, country, trust: 85, initials, passwordHash };
   state.users.push(user);
   await saveState(state);
-  const token = await createSession(user.id);
-  res.cookie(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax' });
-  res.json({ userId: user.id, user });
+  req.session.userId = user.id;
+  req.session.role = user.role;
+  req.session.save((err) => {
+    if (err) {
+      console.error('Session save error:', err);
+      return res.status(500).json({ error: 'Unable to create session' });
+    }
+    res.json({ userId: user.id, user: { ...user, passwordHash: undefined } });
+  });
 });
 
-app.post('/api/auth/logout', async (req, res) => {
-  await clearSession(req);
-  res.clearCookie(SESSION_COOKIE);
-  res.json({ ok: true });
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Session destroy error:', err);
+    }
+    res.clearCookie(SESSION_COOKIE);
+    res.json({ ok: true });
+  });
 });
 
 app.get('/api/db', async (req, res) => {
@@ -261,7 +286,7 @@ app.post('/api/db/reset', async (req, res) => {
 
   try {
     await initDatabase();
-    await pool.query('TRUNCATE TABLE sessions, app_state RESTART IDENTITY CASCADE');
+    await pool.query('TRUNCATE TABLE user_sessions, app_state RESTART IDENTITY CASCADE');
     const state = seedState();
     await pool.query('INSERT INTO app_state(key,value) VALUES($1,$2)', [STATE_KEY, state]);
     res.json(state);
