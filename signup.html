@@ -65,12 +65,22 @@
     });
   });
   const DEST = { buyer:'dashboard-buyer.html', seller:'dashboard-seller.html', logistics:'dashboard-logistics.html' };
-  const USERS = { buyer:'u_buyer', seller:'u_seller', logistics:'u_logi' };
   document.getElementById('signupForm').addEventListener('submit', function(e){
     e.preventDefault();
-    KUDI.setSession(USERS[selectedRole]);
-    KUDI.toast('Account created. KYC verification pending (demo).', 'signal');
-    setTimeout(()=> location.href = DEST[selectedRole], 500);
+    try {
+      const payload = {
+        name: document.getElementById('fname').value,
+        email: document.getElementById('semail').value,
+        role: selectedRole,
+        country: document.getElementById('scountry').value,
+        password: document.getElementById('spass').value,
+      };
+      KUDI.signup(payload);
+      KUDI.toast('Account created. KYC verification pending (demo).', 'signal');
+      setTimeout(()=> location.href = DEST[selectedRole], 500);
+    } catch (err) {
+      KUDI.toast(err.message, 'danger');
+    }
   });
 </script>
 </body>

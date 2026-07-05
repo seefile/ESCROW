@@ -64,9 +64,11 @@
 
 <script src="js/app.js"></script>
 <script>
-  KUDI.requireSession('login.html');
+  const sess = KUDI.requireSession('login.html');
   let db = KUDI.load();
+  const me = db.users.find(u=>u.id===sess.userId) || db.users.find(u=>u.role==='admin');
   document.getElementById('sidebar').innerHTML = KUDI.sidebar('admin','overview');
+  document.querySelector('.user-chip').innerHTML = `<span class="avatar">${me.initials}</span> ${me.name}`;
 
   function userName(id){ return (db.users.find(u=>u.id===id)||{}).name || '—'; }
 

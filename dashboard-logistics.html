@@ -58,9 +58,9 @@
 
 <script src="js/app.js"></script>
 <script>
-  KUDI.requireSession('login.html');
+  const sess = KUDI.requireSession('login.html');
   const db = KUDI.load();
-  const me = db.users.find(u=>u.role==='logistics');
+  const me = db.users.find(u=>u.id===sess.userId) || db.users.find(u=>u.role==='logistics');
   document.getElementById('sidebar').innerHTML = KUDI.sidebar('logistics','overview');
   document.getElementById('companyName').textContent = me.name;
   document.getElementById('chipName').textContent = me.name;

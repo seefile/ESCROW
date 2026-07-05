@@ -1,10 +1,10 @@
-# KudiEscrow — Front-End Prototype
+# KudiEscrow — Node/Express Prototype
 
-A static, vanilla HTML/CSS/JS prototype of the KudiEscrow escrow + logistics
-platform described in the PRD. It's built to demonstrate the core flows and
-UI across every role — it is **not** wired to a real payment processor,
-KYC provider, or backend database. All "data" lives in the browser via
-`localStorage` so the demo persists across page loads.
+A Node/Express prototype of the KudiEscrow escrow + logistics platform.
+It now includes server-side session authentication and persists state via
+Postgres-backed JSON storage. The UI still demonstrates the core flows and
+role-based dashboards, but the data is no longer stored in browser
+`localStorage`.
 
 ## What's included
 
@@ -24,18 +24,36 @@ KYC provider, or backend database. All "data" lives in the browser via
 
 ## Try it locally
 
-No build step needed — it's plain static files.
+### Option 1: Local development with Docker (recommended)
+
+This requires Docker and `docker-compose`.
 
 ```bash
-# any static server works, e.g.:
+# Start the Postgres container
+docker-compose up -d
+
+# Install dependencies
+npm install
+
+# Start the server
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/kudiescrow npm start
+```
+
+The server will run on `http://localhost:3000`. Open it and click **Log In**,
+then pick any demo role (Buyer, Seller, Logistics, Support, Admin) to explore
+that dashboard.
+
+### Option 2: Static file serving (legacy, without backend state)
+
+For a static-only prototype without Postgres:
+
+```bash
 npx serve .
 # or
 python3 -m http.server 8080
 ```
 
-Then open `http://localhost:8080` (or the port shown) and click **Log In**,
-then pick any demo role (Buyer, Seller, Logistics, Support, Admin) to explore
-that dashboard.
+Then open `http://localhost:8080` and explore the UI (demo data is in-memory only).
 
 ## Deploy to Netlify
 
@@ -75,9 +93,18 @@ node server.js
 
 ### Postgres support
 
-If you add a Postgres database in Render, set the `DATABASE_URL` environment variable to the connection string provided by Render.
+If you add a Postgres database in Render, set the `DATABASE_URL` environment
+variable to the connection string provided by Render.
 
-The server will expose a simple health endpoint at `/api/health` and can be extended with Postgres-backed API routes later.
+The server exposes a health endpoint at `/api/health` and also supports:
+
+- `POST /api/auth/login`
+- `POST /api/auth/signup`
+- `POST /api/auth/logout`
+- `GET /api/session`
+- `GET /api/db`
+- `POST /api/db`
+- `POST /api/db/reset`
 
 Alternatively, if you want to deploy locally for testing:
 ```bash
@@ -90,7 +117,7 @@ npm start
 
 - **Real:** all UI flows, role-based dashboards, escrow status transitions,
   chat, dispute lifecycle, audit logging, live-tracking map animation —
-  all driven by actual JS logic and persisted to `localStorage`.
+  all driven by actual JS logic and persisted through the server API.
 - **Simulated:** payments, KYC/business verification, SMS/email/push
   notifications, live GPS/customs data, and the developer API sandbox.
   These are shown as UI only.
@@ -101,7 +128,7 @@ Open the browser console on any page and run:
 ```js
 KUDI.reset()
 ```
-This clears localStorage and reseeds the original demo transactions.
+This resets the demo dataset in the backend state store when using the server.
 
 ## Next steps toward production
 

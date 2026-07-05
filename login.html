@@ -57,7 +57,6 @@
 
 <script src="js/app.js"></script>
 <script>
-  const USERS_BY_ROLE = { buyer:'u_buyer', seller:'u_seller', logistics:'u_logi', support:'u_support', admin:'u_admin' };
   const DEST_BY_ROLE = {
     buyer:'dashboard-buyer.html', seller:'dashboard-seller.html',
     logistics:'dashboard-logistics.html', support:'dashboard-admin.html', admin:'dashboard-admin.html'
@@ -65,9 +64,16 @@
 
   document.getElementById('loginForm').addEventListener('submit', function(e){
     e.preventDefault();
-    KUDI.setSession('u_buyer');
-    KUDI.toast('Welcome back, Amara.', 'signal');
-    setTimeout(()=> location.href='dashboard-buyer.html', 400);
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    try {
+      const result = KUDI.login(email, password);
+      const role = result.user.role;
+      KUDI.toast(`Welcome back, ${result.user.name}.`, 'signal');
+      setTimeout(()=> location.href = DEST_BY_ROLE[role] || 'dashboard-buyer.html', 400);
+    } catch (err) {
+      KUDI.toast(err.message, 'danger');
+    }
   });
 
   document.querySelectorAll('.role-opt').forEach(opt=>{
@@ -75,9 +81,13 @@
       document.querySelectorAll('.role-opt').forEach(o=>o.classList.remove('selected'));
       opt.classList.add('selected');
       const role = opt.dataset.role;
-      KUDI.setSession(USERS_BY_ROLE[role]);
-      KUDI.toast('Signed in as '+role+' (demo).', 'signal');
-      setTimeout(()=> location.href = DEST_BY_ROLE[role], 400);
+      try {
+        const result = KUDI.loginRole(role);
+        KUDI.toast(`Signed in as ${role} (demo).`, 'signal');
+        setTimeout(()=> location.href = DEST_BY_ROLE[role], 400);
+      } catch (err) {
+        KUDI.toast(err.message, 'danger');
+      }
     });
   });
 </script>
