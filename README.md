@@ -73,8 +73,15 @@ node server.js
 ```
 5. Render will install dependencies from `package.json` and start the app.
 
+### Postgres support
+
+If you add a Postgres database in Render, set the `DATABASE_URL` environment variable to the connection string provided by Render.
+
+The server will expose a simple health endpoint at `/api/health` and can be extended with Postgres-backed API routes later.
+
 Alternatively, if you want to deploy locally for testing:
 ```bash
+DATABASE_URL=postgres://user:password@localhost:5432/kudiescrow
 npm install
 npm start
 ```
